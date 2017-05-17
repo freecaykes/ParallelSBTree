@@ -17,10 +17,13 @@ else: # Default to X11
 
 setup(name='ParallelSBTree',
       version='0.1',
-      packages=['parallelsbtree','bintrees'],
+      packages=['parallelsbtree'],
       description='Function execution over large data stored in an AVLTree',
       author='freecaykes',
       url='https://github.com/freecaykes/parallelsbtree',
       platforms="OS Independent",
       license="MIT License",
+      classifiers= [
+        'Development Status :: 1 - Alpha',
+      ]
      )
