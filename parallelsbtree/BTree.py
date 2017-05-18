@@ -1,10 +1,11 @@
+#!/usr/bin/env python
+
 import bisect
 import itertools
 import operator
 import math
-from Node import _Node
-# import collections
 
+from Node import _Node
 
 class BTree(object):
     BRANCH = LEAF = _Node
@@ -95,6 +96,7 @@ class BTree(object):
         leaves = tree._build_bulkloaded_leaves(items)
         tree._build_bulkloaded_branches(leaves)
 
+        # tree.leaves.extend(leaves)
         return tree
 
     def _build_bulkloaded_leaves(self, items):
@@ -114,7 +116,6 @@ class BTree(object):
             leaves[-1] = last_two[minimum + 1:]
             seps.append(last_two[minimum])
 
-        self.leaves.append
         return [self.LEAF(self, contents=node) for node in leaves], seps
 
     def _build_bulkloaded_branches(self, (leaves, seps)):

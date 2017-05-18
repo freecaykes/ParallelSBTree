@@ -1,7 +1,7 @@
 import random
 import unittest
 
-from BTree import BTree
+from parallelsbtree import BTree
 
 class BTreeTests(unittest.TestCase):
 
