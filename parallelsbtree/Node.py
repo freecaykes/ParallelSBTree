@@ -23,6 +23,12 @@ class _Node(object):
         name = getattr(self, "children", 0) and "Branch" or "Leaf"
         return "<%s %s>" % (name, ", ".join(map(str, self.contents)))
 
+    def set_parent(self, parent):
+        self.parent = parent
+
+    def set_children(self, children):
+        self.children = children
+
     def insert(self, index, item, ancestors):
         # print "======================================="
         # print str(self.tree), "\n", str(self.children)

@@ -141,9 +141,14 @@ class BTree(object):
             offset = 0
             for i, node in enumerate(nodes):
                 children = levels[-1][offset:offset + len(node) + 1]
-                nodes[i] = self.BRANCH(self, contents=node, children=children)
+                branch = self.BRANCH(self, contents=node)
+                map( lambda c: c.set_parent(branch), children)
+                branch.set_children(children)
                 offset += len(node) + 1
 
             levels.append(nodes)
 
-        self._root = self.BRANCH(self, contents=seps, children=levels[-1])
+        self._root = self.BRANCH(self, contents=seps)
+        root_children = levels[-1]
+        map( lambda c: c.set_parent(self._root), root_children)
+        self._root.set_children(root_children)
