@@ -6,11 +6,13 @@ import sys
 import math
 import signal
 import functools
-
 import pickle
-from threading import Thread, Semaphore, Timer
+import copy
+import time
+
+from threading import Thread, Semaphore, Timer, Lock
 from BTree import BTree
-from Queue import Queue
+from Queue import Queue, Empty
 
 """
     Parallel threading structure based off a Self-balancing Tree (B-Tree). For operations over
@@ -25,10 +27,11 @@ class ParallelSBTree(object):
         self.time_lock = Semaphore(value=1)
         self._psbt = BTree.bulkload(entries, order)
         self.shared = shared
-        self.iterable = True
-        self.threads = []
         self.started = False
+        self.threads = []
         self.leaves = []
+        self.folded  = Queue(maxsize=1)
+        self.merge_lock = Lock()
 
     def foreach(self, function, root, merge_function=None, merge_args=None):
         if len(self.leaves) == 0:
@@ -44,8 +47,10 @@ class ParallelSBTree(object):
         else:
             return None
 
-
     def _group_siblings(self, leaves, values, merge_function, merge_args):
+        if len(leaves) == 0:
+            return []
+
         t_parents = {}
         t_values = {}
         # print str(leaves), str(values)
@@ -65,7 +70,7 @@ class ParallelSBTree(object):
         p_leaves = []
         for key in t_parents.keys():
             _values = None
-            if merge_function and len(values) > 0:
+            if merge_function and len(values) > 0 : # attach the reduced sibling batch
                 _values = self._merge_function_wrapper( merge_function, merge_args, values)
             p_leaves.append( (t_parents[key], _values) )
 
@@ -75,14 +80,16 @@ class ParallelSBTree(object):
         _p_leaves = []
         _values = []
         num_leaves = len(p_leaves)
+        end = False
+        # print str( p_leaves )
 
         def _inner_thread_work(tree, s_batch, function, merge_function, merge_args, resource_queue):
             for leaf in s_batch:
                 worker_thread = Thread( target=tree._function_wrapper,
                     args=(function, merge_function, leaf, merge_args, resource_queue) )
                 worker_thread.start()
+                worker_thread.join()
                 tree.threads.append(worker_thread)
-                # resource_queue.task_done()
 
         for s_batch_t in p_leaves:  # sibling batch
             s_batch = s_batch_t[0]
@@ -91,27 +98,44 @@ class ParallelSBTree(object):
             s_parent = s_batch[0].parent
             resource_queue = Queue() # unique to each s_batch
 
+            # populate queue with node.contents
             worker_thread = Thread(target=_inner_thread_work,
                 args=(self, s_batch, function, merge_function, merge_args, resource_queue))
+            worker_thread.daemon = True
             worker_thread.start()
-            resource_queue.join()  # resource_queue contains all to merge values per leaf in s_batch
 
-            if merge_function:# merge results with parent
+            if merge_function:# merge results with value from children
+                # print "\n UP Queue Status:", str(resource_queue.queue), "folded:",self.folded ,"\n"
+
                 self._fold_results(resource_queue, num_leaves,merge_function, merge_args)
-                resource_queue.join()  # block until _fold_results is done
-                combined_value = self._merge_function_wrapper( merge_function, merge_args, [s_batch_value, resource_queue.get(0)])
-                _p_leaves.append(s_parent)
-                _values.append( resource_queue.get(0) )
+                self.folded.join() # block until _fold_results is done ie. self.folded is filled
 
-        if len(p_leaves) == 1 and p_leaves[0].parent == None:
+                folded = self.folded.get()
+                s_b_fold_arr = [s_batch_value, folded]
+                combined_value = None
+                combined_value = self._merge_function_wrapper( merge_function, merge_args, list( filter( lambda s: s, s_b_fold_arr)))
+                self.folded.empty()
+                # try:
+                #     print "HIT combined_value"  # appen results from children
+                # except Empty: # from  resource_queue
+                #     print "Empty Queue", str(resource_queue.queue)
+                #     # print "\nQueue Status:", str(resource_queue.queue), "folded:",self.folded ,"\n"
+                #     combined_value = self.folded.get(False)
+
+                _p_leaves.append(s_parent)
+                _values.append( combined_value )
+                if not s_parent:
+                    end = True
+
+        if end: # if root
             self.started = False
             temp = self.threads
             self.threads = []
             del temp
             if merge_function:
-                return resource_queue.get(0)
+                return _values[0]
             else:
-                return
+                return None
 
         ret_p_leaves = self._group_siblings( _p_leaves, _values, merge_function, merge_args )
         self.threads = list(filter(lambda t: t.is_alive(), self.threads))
@@ -121,30 +145,38 @@ class ParallelSBTree(object):
         if merge_function: # if get fold
             _retvalues = list( map(lambda c: function(c), root.contents) )
             _fold_val = self._merge_function_wrapper(merge_function, merge_args, _retvalues)
-            resource_queue.put(_fold_val)
+            resource_queue.put(_fold_val, False)
             del _retvalues
             del _fold_val
         else:
             map(lambda c: function(c), root.contents)
 
-
     def _fold_results(self, resource_queue, num_leaves, merge_function, merge_args):
         if resource_queue.qsize() >= num_leaves:
             _mergevalues = list(resource_queue.queue)
+            if len(_mergevalues) == 1:
+                # end on root
+                print "DONE ROOT", str( _mergevalues[0] )
+                self.folded.put_nowait( _mergevalues[0] )
+            else:
+                self.folded.put_nowait ( self._merge_function_wrapper(merge_function, merge_args, _mergevalues) )
 
-            resource_queue.empty()
-            resource_queue.put(self._merge_function_wrapper(merge_function, merge_args, _mergevalues))
-            resource_queue.task_done()
+            self.folded.task_done()
         else:  # runs on another thread
-            Timer(5e-7, self._fold_results, args=(resource_queue,num_leaves, merge_function, merge_args)).start()
+            print "spawned"
+            Timer(5e-5, self._fold_results, args=(resource_queue, num_leaves, merge_function, merge_args)).start()
+
 
     def _merge_function_wrapper(self, merge_function, merge_args, returnvalues):
+        print "_merge_function_wrapper", str(returnvalues)
         if merge_function and len(returnvalues) > 0:
             try:
                 if merge_args:
                     return reduce(lambda e1, e2: merge_function(e1, e2, merge_args), returnvalues)
+                    print "HIT 1"
                 else:
                     return reduce(lambda e1, e2: merge_function(e1, e2), returnvalues)
+                    print "HIT 2"
             except TypeError, e:
                 print "TypeError: ", str(e)
                 return None

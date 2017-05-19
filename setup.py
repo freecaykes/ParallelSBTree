@@ -25,4 +25,5 @@ setup(name='ParallelSBTree',
       license="MIT License",
       classifiers= [
         'Development Status :: 1 - Alpha',
-]
+        ]
+    )
