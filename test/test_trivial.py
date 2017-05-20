@@ -19,9 +19,33 @@ class test_simple(unittest.TestCase):
         # simple square sum
         return element
 
+    def test_pbst_small_set(self):
+        NUM_THREADS = 10
+        to_sum = [int(1000*random.random()) for _ in xrange(NUM_THREADS)]
+        num_trees = ParallelSBTree(to_sum, 3, None)
+
+        # blocking until done
+        add_sum = num_trees.foreach(self.parallel_function, num_trees._psbt._root, self.merge_function)
+
+        sum_native = sum( (list ( map (lambda x: x**2, to_sum))))
+        # print sum_native
+        self.assertEqual(add_sum, sum_native)
+
+    def test_pbst_1_leaf(self):
+        NUM_THREADS = 1000
+        to_sum = [int(1000*random.random()) for _ in xrange(NUM_THREADS)]
+        num_trees = ParallelSBTree(to_sum, 1000, None)
+
+        # blocking until done
+        add_sum = num_trees.foreach(self.parallel_function, num_trees._psbt._root, self.merge_function)
+
+        sum_native = sum( (list ( map (lambda x: x**2, to_sum))))
+        # print sum_native
+        self.assertEqual(add_sum, sum_native)
+
     def test_pbst_large_order(self):
-        NUM_THREADS = 64
-        to_sum = [int(1000*random.random()) for i in xrange(NUM_THREADS)]
+        NUM_THREADS = 1000
+        to_sum = [int(1000*random.random()) for _ in xrange(NUM_THREADS)]
         num_trees = ParallelSBTree(to_sum, 10, None)
 
         # blocking until done
@@ -32,8 +56,8 @@ class test_simple(unittest.TestCase):
         self.assertEqual(add_sum, sum_native)
 
     def test_pbst_small_order(self):
-        NUM_THREADS = 10
-        to_sum = [int(1000*random.random()) for i in xrange(NUM_THREADS)]
+        NUM_THREADS = 1000
+        to_sum = [int(1000*random.random()) for _ in xrange(NUM_THREADS)]
         num_trees = ParallelSBTree(to_sum, 3, None)
         print to_sum
         print str(num_trees._psbt)

@@ -144,11 +144,14 @@ class BTree(object):
                 branch = self.BRANCH(self, contents=node)
                 map( lambda c: c.set_parent(branch), children)
                 branch.set_children(children)
+                nodes[i] = branch
                 offset += len(node) + 1
 
+            print "NODES:", nodes
             levels.append(nodes)
 
         self._root = self.BRANCH(self, contents=seps)
         root_children = levels[-1]
+        print "TREE NODE: ", root_children
         map( lambda c: c.set_parent(self._root), root_children)
         self._root.set_children(root_children)
